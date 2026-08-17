@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+  <uses-permission android:name="android.permission.INTERNET" />
+  <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+  <application android:label="High Seas Remote" android:icon="@drawable/high_seas_remote_icon" android:roundIcon="@drawable/high_seas_remote_icon" android:theme="@style/AppTheme" android:usesCleartextTraffic="true" android:allowBackup="true" android:supportsRtl="true" />
+</manifest>

@@ -1,0 +1,36 @@
+# Build/runtime output
+bin/
+obj/
+publish/
+.dotnet-home/
+.dotnet-cli/
+.android-sdk/
+.android-jdk/
+.android-jdk-extract/
+*.user
+*.suo
+
+# Local media/library state and diagnostics
+media-library.json
+sheet-data/
+subtitle-audit.csv
+rename-plan.csv
+rename-plan.json
+installed-*.png
+installed-*.json
+live-*.png
+live-*.json
+live-*.txt
+verify-*.png
+*-check.png
+.codex-remote-attachments/
+
+# Packages and downloaded test media
+*.apk
+*.zip
+underworld-*.srt
+underworld-tigole/
+
+# Local secrets/configuration
+appsettings.local.json
+*.secrets.json
