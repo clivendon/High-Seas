@@ -31,7 +31,7 @@ After making and testing changes:
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\publish-github.ps1 -Message "Describe the change"
 ```
 
-This commits tracked source changes, creates a tag such as `v2026.08.16.2030`, pushes the branch and tag, and creates a GitHub release when the GitHub CLI (`gh`) is installed and authenticated. The release assets are the Android APK and portable Windows ZIP. Without `gh`, the script still pushes the code and tag and prints the exact files to attach manually.
+This commits tracked source changes, creates a tag such as `v2026.08.16.2030`, pushes the branch and tag, and creates a GitHub release when the GitHub CLI (`gh`) is installed and authenticated. GitHub Desktop sign-in is also supported through Git Credential Manager, so the script can create the release and upload the Android APK and portable Windows ZIP even when `gh` is not installed. If no GitHub credential is available, the script still pushes the code and tag and prints the exact files to attach manually.
 
 For a source-only checkpoint without rebuilding:
 
@@ -40,4 +40,3 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\publish-github.ps1 -Sk
 ```
 
 Every release should be tested locally before publishing. Keep personal library databases, downloaded media, API keys, and diagnostics out of commits; the repository `.gitignore` covers the generated local state.
-

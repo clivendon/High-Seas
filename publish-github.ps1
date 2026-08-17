@@ -71,5 +71,31 @@ if ($gh -and (Test-Path -LiteralPath $apk)) {
     & $gh.Source @releaseArgs
     if ($LASTEXITCODE -ne 0) { throw 'GitHub release creation failed.' }
 } else {
-    Write-Host "Code and tag pushed. Create a GitHub release for $tag and attach $apk."
+    # GitHub Desktop installs Git Credential Manager even when the gh CLI is absent. Use the
+    # already-authenticated credential only in memory to create the release and upload its assets.
+    $credential = ("protocol=https`nhost=github.com`n`n" | git credential fill) -join "`n"
+    $token = ([regex]::Match($credential, '(?m)^password=(.+)$')).Groups[1].Value.Trim()
+    $remoteMatch = [regex]::Match($Remote, 'github\.com[/:](?<owner>[^/]+)/(?<repo>[^/]+?)(?:\.git)?$')
+    if ([string]::IsNullOrWhiteSpace($token) -or -not $remoteMatch.Success) {
+        Write-Host "Code and tag pushed. Install/sign in to GitHub CLI to create a release for $tag and attach $apk."
+    } else {
+        $repoPath = "$($remoteMatch.Groups['owner'].Value)/$($remoteMatch.Groups['repo'].Value)"
+        $headers = @{ Authorization = "Bearer $token"; Accept = 'application/vnd.github+json'; 'X-GitHub-Api-Version' = '2022-11-28' }
+        $release = $null
+        try { $release = Invoke-RestMethod -Uri "https://api.github.com/repos/$repoPath/releases/tags/$tag" -Headers $headers -Method Get } catch { }
+        if (-not $release) {
+            $body = @{ tag_name = $tag; name = "High Seas Media $version"; generate_release_notes = $true; draft = [bool]$Draft } | ConvertTo-Json
+            $release = Invoke-RestMethod -Uri "https://api.github.com/repos/$repoPath/releases" -Headers $headers -Method Post -ContentType 'application/json' -Body $body
+        }
+        $assets = @($release.assets | ForEach-Object name)
+        foreach ($assetPath in @($apk, $windowsZip)) {
+            if (-not (Test-Path -LiteralPath $assetPath)) { continue }
+            $assetName = [IO.Path]::GetFileName($assetPath)
+            if ($assets -contains $assetName) { Write-Host "Release asset already exists: $assetName"; continue }
+            $contentType = if ($assetName.EndsWith('.apk')) { 'application/vnd.android.package-archive' } else { 'application/zip' }
+            Write-Host "Uploading $assetName…"
+            Invoke-WebRequest -Uri "$($release.upload_url -replace '\{\?.*\}$','')?name=$([uri]::EscapeDataString($assetName))" -Headers $headers -Method Post -InFile $assetPath -ContentType $contentType | Out-Null
+        }
+        Write-Host "GitHub release ready: $($release.html_url)"
+    }
 }
