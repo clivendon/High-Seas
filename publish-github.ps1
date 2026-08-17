@@ -94,7 +94,16 @@ if ($gh -and (Test-Path -LiteralPath $apk)) {
             if ($assets -contains $assetName) { Write-Host "Release asset already exists: $assetName"; continue }
             $contentType = if ($assetName.EndsWith('.apk')) { 'application/vnd.android.package-archive' } else { 'application/zip' }
             Write-Host "Uploading $assetName…"
-            Invoke-WebRequest -Uri "$($release.upload_url -replace '\{\?.*\}$','')?name=$([uri]::EscapeDataString($assetName))" -Headers $headers -Method Post -InFile $assetPath -ContentType $contentType | Out-Null
+            $uploadUri = "$($release.upload_url -replace '\{\?.*\}$','')?name=$([uri]::EscapeDataString($assetName))"
+            try {
+                Invoke-WebRequest -Uri $uploadUri -Headers $headers -Method Post -InFile $assetPath -ContentType $contentType -UseBasicParsing | Out-Null
+            } catch {
+                # PowerShell can report a null response after GitHub has accepted a large binary.
+                # Re-read the release before treating the upload as a real failure.
+                $confirmed = Invoke-RestMethod -Uri "https://api.github.com/repos/$repoPath/releases/tags/$tag" -Headers $headers -Method Get
+                if (@($confirmed.assets | ForEach-Object name) -notcontains $assetName) { throw }
+                Write-Host "GitHub accepted $assetName; PowerShell returned no response body."
+            }
         }
         Write-Host "GitHub release ready: $($release.html_url)"
     }
