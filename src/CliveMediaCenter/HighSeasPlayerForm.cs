@@ -99,7 +99,21 @@ internal sealed class HighSeasPlayerForm : Form
         elapsed = new Label { Text = "0:00", Location = new Point(20, 69), Size = new Size(120, 22), ForeColor = Color.White, Font = new Font("Segoe UI Semibold", 10f), TextAlign = ContentAlignment.MiddleLeft };
         controls.Controls.Add(elapsed);
 
-        remaining = new Label { Text = "0:00 total", Location = new Point(destination.Bounds.Width - 300, 69), Size = new Size(278, 22), ForeColor = Sage, TextAlign = ContentAlignment.MiddleRight, Anchor = AnchorStyles.Top | AnchorStyles.Right };
+        // Reserve a dedicated area immediately left of EXIT.  The previous label stretched
+        // underneath the EXIT button, leaving only a thin sliver of the remaining-time text
+        // visible on some resolutions.  Keeping this label to its own 220px lane makes the
+        // countdown readable without competing with the transport controls.
+        remaining = new Label
+        {
+            Text = "−0:00 / 0:00",
+            Location = new Point(destination.Bounds.Width - 318, 69),
+            Size = new Size(218, 22),
+            ForeColor = Sage,
+            Font = new Font("Segoe UI Semibold", 10f),
+            TextAlign = ContentAlignment.MiddleRight,
+            AutoEllipsis = false,
+            Anchor = AnchorStyles.Top | AnchorStyles.Right
+        };
         controls.Controls.Add(remaining);
 
         playPause = MakeControlButton("Ⅱ", 20, 101, 62);
@@ -286,7 +300,7 @@ internal sealed class HighSeasPlayerForm : Form
         var length = Math.Max(0, player.Length);
         var current = Math.Clamp(player.Time, 0, length > 0 ? length : long.MaxValue);
         elapsed.Text = FormatTime(current);
-        remaining.Text = length > 0 ? $"−{FormatTime(length - current)} remaining   •   {FormatTime(length)} total" : "Loading duration…";
+        remaining.Text = length > 0 ? $"−{FormatTime(length - current)} / {FormatTime(length)}" : "Loading duration…";
         volumeStatus.Text = player.Mute ? "MUTED" : $"VOL {player.Volume}%";
         if (DateTime.UtcNow - lastInteraction > TimeSpan.FromSeconds(4) && player.IsPlaying)
         {
