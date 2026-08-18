@@ -36,6 +36,7 @@ internal sealed class HighSeasPlayerForm : Form
     internal event EventHandler? PlaybackEnded;
     internal event EventHandler? NextEpisodeRequested;
     internal event EventHandler? PreviousEpisodeRequested;
+    internal event EventHandler<PlaybackProgressEventArgs>? PlaybackProgress;
 
     /// <summary>Used by release verification to prove the bundled native engine can load.</summary>
     internal static void VerifyPlaybackEngine()
@@ -44,7 +45,7 @@ internal sealed class HighSeasPlayerForm : Form
         using var engine = new LibVLC("--quiet");
     }
 
-    public HighSeasPlayerForm(string mediaPath, string? subtitlePath, Screen destination, bool subtitlesEnabled = false)
+    public HighSeasPlayerForm(string mediaPath, string? subtitlePath, Screen destination, bool subtitlesEnabled = false, long startTimeMilliseconds = 0)
     {
         subtitlesEnabledAtStart = subtitlesEnabled;
         Core.Initialize(FindBundledLibVlcDirectory());
@@ -66,7 +67,7 @@ internal sealed class HighSeasPlayerForm : Form
 
         // Keep the HUD as a sibling of the native video surface. Native HWND video controls can
         // cover managed children, which previously made timing information disappear on some PCs.
-        controls = new Panel { Dock = DockStyle.Bottom, Height = 142, BackColor = Deck };
+        controls = new Panel { Dock = DockStyle.Bottom, Height = 166, BackColor = Deck };
         Controls.Add(controls);
         controls.BringToFront();
 
@@ -84,7 +85,7 @@ internal sealed class HighSeasPlayerForm : Form
 
         timeline = new TrackBar
         {
-            Location = new Point(12, 40),
+            Location = new Point(12, 39),
             Width = Math.Max(500, destination.Bounds.Width - 24),
             Height = 28,
             Minimum = 0,
@@ -96,7 +97,18 @@ internal sealed class HighSeasPlayerForm : Form
         timeline.MouseUp += (_, _) => { player.Position = timeline.Value / 10_000f; changingTimeline = false; MarkInteraction(); };
         controls.Controls.Add(timeline);
 
-        elapsed = new Label { Text = "0:00", Location = new Point(20, 69), Size = new Size(120, 22), ForeColor = Color.White, Font = new Font("Segoe UI Semibold", 10f), TextAlign = ContentAlignment.MiddleLeft };
+        elapsed = new Label
+        {
+            Text = "0:00",
+            Location = new Point(14, 70),
+            Size = new Size(120, 28),
+            BackColor = Hull,
+            ForeColor = Color.White,
+            Font = new Font("Segoe UI Semibold", 12f),
+            TextAlign = ContentAlignment.MiddleLeft,
+            AutoSize = false,
+            Anchor = AnchorStyles.Top | AnchorStyles.Left
+        };
         controls.Controls.Add(elapsed);
 
         // Reserve a dedicated area immediately left of EXIT.  The previous label stretched
@@ -106,10 +118,11 @@ internal sealed class HighSeasPlayerForm : Form
         remaining = new Label
         {
             Text = "−0:00 / 0:00",
-            Location = new Point(destination.Bounds.Width - 318, 69),
-            Size = new Size(218, 22),
+            Location = new Point(destination.Bounds.Width - 318, 70),
+            Size = new Size(218, 28),
+            BackColor = Hull,
             ForeColor = Sage,
-            Font = new Font("Segoe UI Semibold", 10f),
+            Font = new Font("Segoe UI Semibold", 12f),
             TextAlign = ContentAlignment.MiddleRight,
             AutoEllipsis = false,
             Anchor = AnchorStyles.Top | AnchorStyles.Right
@@ -126,7 +139,9 @@ internal sealed class HighSeasPlayerForm : Form
         var mute = MakeControlButton("MUTE", 466, 101, 76); mute.Click += (_, _) => ToggleMute();
         volumeStatus = new Label { Text = "VOL 100%", Location = new Point(554, 104), Size = new Size(110, 24), ForeColor = Sage, TextAlign = ContentAlignment.MiddleLeft };
         controls.Controls.Add(volumeStatus);
-        var exit = MakeControlButton("EXIT", destination.Bounds.Width - 98, 101, 76); exit.Anchor = AnchorStyles.Top | AnchorStyles.Right; exit.Click += (_, _) => Close();
+        var exit = MakeControlButton("EXIT", destination.Bounds.Width - 98, 112, 76); exit.Anchor = AnchorStyles.Top | AnchorStyles.Right; exit.Click += (_, _) => Close();
+        elapsed.BringToFront();
+        remaining.BringToFront();
 
         player.EndReached += (_, _) => BeginInvoke(() =>
         {
@@ -158,6 +173,7 @@ internal sealed class HighSeasPlayerForm : Form
             using var media = new Media(libVlc, mediaPath, FromType.FromPath);
             if (!string.IsNullOrWhiteSpace(subtitlePath)) media.AddOption($":sub-file={subtitlePath}");
             player.Play(media);
+            if (startTimeMilliseconds > 0) BeginInvoke(() => player.Time = startTimeMilliseconds);
             Activate();
         };
     }
@@ -301,6 +317,7 @@ internal sealed class HighSeasPlayerForm : Form
         var current = Math.Clamp(player.Time, 0, length > 0 ? length : long.MaxValue);
         elapsed.Text = FormatTime(current);
         remaining.Text = length > 0 ? $"−{FormatTime(length - current)} / {FormatTime(length)}" : "Loading duration…";
+        if (length > 0) PlaybackProgress?.Invoke(this, new PlaybackProgressEventArgs(current, length));
         volumeStatus.Text = player.Mute ? "MUTED" : $"VOL {player.Volume}%";
         if (DateTime.UtcNow - lastInteraction > TimeSpan.FromSeconds(4) && player.IsPlaying)
         {
@@ -323,4 +340,10 @@ internal sealed class HighSeasPlayerForm : Form
         player.Dispose();
         libVlc.Dispose();
     }
+}
+
+internal sealed class PlaybackProgressEventArgs(long positionMilliseconds, long durationMilliseconds) : EventArgs
+{
+    internal long PositionMilliseconds { get; } = positionMilliseconds;
+    internal long DurationMilliseconds { get; } = durationMilliseconds;
 }

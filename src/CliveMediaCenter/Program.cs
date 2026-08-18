@@ -277,6 +277,7 @@ internal sealed class MainForm : Form
     private readonly List<(Guid Id, string Name)> audioOutputs = new();
     private readonly List<MediaItem> library = new();
     private readonly Dictionary<string, DateTime> watchHistory = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, long> playbackPositions = new(StringComparer.OrdinalIgnoreCase);
     private readonly List<Panel> watchCards = new();
     private readonly Dictionary<Panel, (int Section, int Row, int Column, int Top)> watchCardPositions = new();
     private readonly Dictionary<Panel, Rectangle> watchCardLogicalBounds = new();
@@ -1533,17 +1534,28 @@ internal sealed class MainForm : Form
     }
 
     private string WatchHistoryPath => Path.Combine(metadataFolder, "watch-history.json");
+    private string PlaybackPositionsPath => Path.Combine(metadataFolder, "playback-positions.json");
 
     private void LoadWatchHistory()
     {
         try
         {
-            if (!File.Exists(WatchHistoryPath)) return;
-            var loaded = JsonSerializer.Deserialize<Dictionary<string, DateTime>>(File.ReadAllText(WatchHistoryPath));
-            if (loaded == null) return;
-            foreach (var pair in loaded.Where(x => File.Exists(x.Key))) watchHistory[pair.Key] = pair.Value;
+            if (File.Exists(WatchHistoryPath))
+            {
+                var loaded = JsonSerializer.Deserialize<Dictionary<string, DateTime>>(File.ReadAllText(WatchHistoryPath));
+                if (loaded != null)
+                    foreach (var pair in loaded.Where(x => File.Exists(x.Key))) watchHistory[pair.Key] = pair.Value;
+            }
         }
         catch { watchHistory.Clear(); }
+        try
+        {
+            if (!File.Exists(PlaybackPositionsPath)) return;
+            var loadedPositions = JsonSerializer.Deserialize<Dictionary<string, long>>(File.ReadAllText(PlaybackPositionsPath));
+            if (loadedPositions == null) return;
+            foreach (var pair in loadedPositions.Where(x => File.Exists(x.Key) && x.Value > 0)) playbackPositions[pair.Key] = pair.Value;
+        }
+        catch { playbackPositions.Clear(); }
     }
 
     private void RememberWatched(MediaItem media)
@@ -1551,6 +1563,15 @@ internal sealed class MainForm : Form
         watchHistory[media.FullPath] = DateTime.UtcNow;
         try { File.WriteAllText(WatchHistoryPath, JsonSerializer.Serialize(watchHistory, new JsonSerializerOptions { WriteIndented = true })); } catch { }
         if (browseMode == "Home") RefreshWatchView();
+    }
+
+    private void RememberPlaybackPosition(MediaItem media, PlaybackProgressEventArgs progress)
+    {
+        // Treat the final few seconds as complete so finished items do not reappear as resumes.
+        if (progress.DurationMilliseconds > 0 && progress.DurationMilliseconds - progress.PositionMilliseconds < 15_000)
+            playbackPositions.Remove(media.FullPath);
+        else playbackPositions[media.FullPath] = progress.PositionMilliseconds;
+        try { File.WriteAllText(PlaybackPositionsPath, JsonSerializer.Serialize(playbackPositions, new JsonSerializerOptions { WriteIndented = true })); } catch { }
     }
 
     private async Task ScanLibraryAsync()
@@ -2893,10 +2914,12 @@ function switchMode(name){const media=name==='media';el('mediaMode').classList.t
         try
         {
             activePlayer?.Close();
-            activePlayer = new HighSeasPlayerForm(media.FullPath, subtitlePath, Screen.AllScreens[screenIndex], useSubtitles.Checked);
+            var resumePosition = playbackPositions.TryGetValue(media.FullPath, out var savedPosition) ? savedPosition : 0;
+            activePlayer = new HighSeasPlayerForm(media.FullPath, subtitlePath, Screen.AllScreens[screenIndex], useSubtitles.Checked, resumePosition);
             if (autoplayNext) activePlayer.PlaybackEnded += (_, _) => PlayNextEpisode(media);
             activePlayer.NextEpisodeRequested += (_, _) => PlayNextEpisode(media);
             activePlayer.PreviousEpisodeRequested += (_, _) => PlayPreviousEpisode(media);
+            activePlayer.PlaybackProgress += (_, progress) => RememberPlaybackPosition(media, progress);
             activePlayer.FormClosed += (_, _) => { if (activePlayer?.IsDisposed == true) activePlayer = null; };
             RememberWatched(media);
             activePlayer.Show(this);
