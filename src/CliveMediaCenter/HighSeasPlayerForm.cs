@@ -32,6 +32,7 @@ internal sealed class HighSeasPlayerForm : Form
     private Point lastCursorPosition = Cursor.Position;
     private DateTime lastInteraction = DateTime.UtcNow;
     private readonly bool subtitlesEnabledAtStart;
+    private readonly string monitorAspectRatio;
 
     internal event EventHandler? PlaybackEnded;
     internal event EventHandler? NextEpisodeRequested;
@@ -48,6 +49,7 @@ internal sealed class HighSeasPlayerForm : Form
     public HighSeasPlayerForm(string mediaPath, string? subtitlePath, Screen destination, bool subtitlesEnabled = false, long startTimeMilliseconds = 0)
     {
         subtitlesEnabledAtStart = subtitlesEnabled;
+        monitorAspectRatio = destination.Bounds.Width + ":" + destination.Bounds.Height;
         Core.Initialize(FindBundledLibVlcDirectory());
         libVlc = new LibVLC("--no-video-title-show", "--quiet");
         player = new MediaPlayer(libVlc);
@@ -171,6 +173,11 @@ internal sealed class HighSeasPlayerForm : Form
         Shown += (_, _) =>
         {
             using var media = new Media(libVlc, mediaPath, FromType.FromPath);
+            // Some locally encoded files carry a broken display-aspect tag. Tell LibVLC to
+            // use the selected monitor geometry so those files cannot render as a thin strip
+            // or with a rotated-looking ratio. LibVLC still letterboxes when source and screen
+            // shapes differ; this replaces invalid source metadata.
+            media.AddOption($":aspect-ratio={monitorAspectRatio}");
             if (!string.IsNullOrWhiteSpace(subtitlePath)) media.AddOption($":sub-file={subtitlePath}");
             player.Play(media);
             if (startTimeMilliseconds > 0) BeginInvoke(() => player.Time = startTimeMilliseconds);
